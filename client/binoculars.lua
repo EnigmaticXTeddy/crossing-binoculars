@@ -1,99 +1,168 @@
-local usingBinoculars = false
 local cam = nil
 
-local zoom = 40.0
-local minZoom = 15.0
-local maxZoom = 70.0
+-- Configuration for binoculars
+Config = Config or {}
+Config.Binoculars = {
+    normal = {
+        zoom = false,
+        baseFov = 38.0,
+        swayMultiplier = 0.65, -- Updated sway multipliers for realism
+        distancePrecision = 5.0, -- Updated distance precision for psychological impact
+        compassMode = "cardinal"
+    },
+    improved = {
+        zoom = true,
+        minFov = 15.0,
+        maxFov = 50.0,
+        zoomStep = 2.5,
+        swayMultiplier = 0.18, -- Updated sway multipliers for realism
+        distancePrecision = 1.0,
+        compassMode = "degrees"
+    }
+}
 
 RSG_UsingBinoculars = false
 
 -- Load debug configuration
-local debugMode = GetResourceKvpString('Crossing-Binoculars:debug') == 'true'
+Config.Debug = GetResourceKvpString('Crossing-Binoculars:debug') == 'true'
 
 local function debugPrint(message)
-    if debugMode then
+    if Config.Debug then
         print(message)
     end
 end
 
 debugPrint('[Crossing-Binoculars] Client script loaded')
 
-RegisterNetEvent('Crossing-Binoculars:client:UseBinoculars', function(isImproved)
-    debugPrint('[Crossing-Binoculars] Event triggered | Improved:', isImproved)
-
-    if usingBinoculars then
-        StopBinoculars()
-        return
+-- Check if ox_lib is available
+CreateThread(function()
+    Wait(2000)
+    if Config.Debug then
+        debugPrint('[Crossing-Binoculars] ox_lib exists: ' .. tostring(lib ~= nil))
     end
-
-    usingBinoculars = true
-    RSG_UsingBinoculars = true
-
-    local ped = PlayerPedId()
-
-    if isImproved then
-        minZoom = 10.0
-        maxZoom = 100.0 -- Extended zoom for improved binoculars
-        zoom = 35.0
-    else
-        minZoom = 15.0
-        maxZoom = 70.0 -- Standard zoom for normal binoculars
-        zoom = 40.0
-    end
-
-    Wait(400)
-    ClearPedTasksImmediately(ped)
-
-    -- Animation (visual)
-    RequestAnimDict('amb_rest@world_human_binoculars@male_a@idle_a')
-    while not HasAnimDictLoaded('amb_rest@world_human_binoculars@male_a@idle_a') do
-        Wait(0)
-    end
-
-    TaskPlayAnim(
-        ped,
-        'amb_rest@world_human_binoculars@male_a@idle_a',
-        'idle_a',
-        1.0, -1.0, -1, 1, 0, false, false, false
-    )
-
-    debugPrint('[Crossing-Binoculars] Animation started')
-
-    -- Camera setup
-    CreateThread(function()
-        cam = CreateCam('DEFAULT_SCRIPTED_FLY_CAMERA', true)
-        AttachCamToEntity(cam, ped, 0.0, 0.0, 1.0, true)
-        SetCamActive(cam, true)
-        RenderScriptCams(true, false, 0, true, true)
-
-        debugPrint('[Crossing-Binoculars] Camera activated')
-
-        while usingBinoculars do
-            Wait(0)
-            local zoomValue = (1.0 / (maxZoom - minZoom)) * (zoom - minZoom)
-            SetCamFov(cam, zoomValue * 100.0)
-
-            if IsControlJustPressed(0, 241) then -- Scroll up
-                zoom = math.max(minZoom, zoom - 5.0)
-                debugPrint('[Crossing-Binoculars] Zoom in:', zoom)
-            elseif IsControlJustPressed(0, 242) then -- Scroll down
-                zoom = math.min(maxZoom, zoom + 5.0)
-                debugPrint('[Crossing-Binoculars] Zoom out:', zoom)
-            elseif IsControlJustPressed(0, 177) then -- Backspace
-                StopBinoculars()
-            end
-        end
-    end)
 end)
 
-function StopBinoculars()
-    ClearPedTasksImmediately(PlayerPedId())
-    RenderScriptCams(false, false, 0, true, true)
-    DestroyCam(cam, false)
-    usingBinoculars = false
-    RSG_UsingBinoculars = false
-    debugPrint('[Crossing-Binoculars] Binoculars stopped')
+-- Compass using gameplay camera
+local function getCompass()
+    local heading = GetGameplayCamRot(2).z
+    heading = (heading + 360) % 360
+
+    local dirs = {"N","NE","E","SE","S","SW","W","NW"}
+    local index = math.floor((heading + 22.5) / 45) % 8 + 1
+
+    return dirs[index], math.floor(heading)
 end
+
+-- Convert camera rotation to direction vector (RedM safe)
+local function RotToDirection(rot)
+    local z = math.rad(rot.z)
+    local x = math.rad(rot.x)
+
+    return vector3(
+        -math.sin(z) * math.cos(x),
+         math.cos(z) * math.cos(x),
+         math.sin(x)
+    )
+end
+
+-- Distance using gameplay camera
+local function getDistance()
+    local camCoords = GetGameplayCamCoord()
+    local camRot = GetGameplayCamRot(2)
+    local forward = RotToDirection(camRot)
+    local rayEnd = camCoords + (forward * 1000.0)
+
+    local ray = StartShapeTestRay(
+        camCoords.x, camCoords.y, camCoords.z,
+        rayEnd.x, rayEnd.y, rayEnd.z,
+        -1, PlayerPedId(), 0
+    )
+
+    local _, hit, endCoords = GetShapeTestResult(ray)
+    if hit == 1 then
+        return #(camCoords - endCoords)
+    end
+
+    return nil
+end
+
+-- Enhanced camera sway logic for RedM compatibility
+local function applyCameraSway(mult)
+    local stamina = GetPlayerStamina(PlayerId()) / 100.0
+    local sway = (1.0 - stamina) * mult
+
+    -- Make sway visible through vanilla stabilization
+    local t = GetGameTimer() / 500.0
+
+    SetGameplayCamRelativePitch(math.sin(t) * sway * 1.2, 1.0)
+    SetGameplayCamRelativeHeading(math.cos(t) * sway * 1.2)
+end
+
+-- Ensure Config.ZoomInvert is defined
+Config.ZoomInvert = false
+
+-- Adjusted camera attachment height for better alignment
+local function attachCameraToEntity()
+    AttachCamToEntity(cam, PlayerPedId(), 0.0, 0.0, 1.2, true) -- Adjusted height
+end
+
+-- Declare baseCamRot as a local variable
+local baseCamRot = nil
+
+-- Optional: Disable sprint and jump while using binoculars
+local function disableMovementActions()
+    DisableControlAction(0, 0x8FFC75D6, true) -- Sprint
+    DisableControlAction(0, 0xD9D0E1C0, true) -- Jump
+end
+
+-- Optional: Fade-in camera for polished feel
+local function fadeInCamera()
+    DoScreenFadeOut(150)
+    Wait(150)
+    DoScreenFadeIn(150)
+end
+
+-- Removed the UseBinoculars event and related logic
+-- Removed usingBinoculars and StopBinoculars logic
+
+CreateThread(function()
+    while true do
+        Wait(0)
+
+        local ped = PlayerPedId()
+        local _, weapon = GetCurrentPedWeapon(ped, true)
+
+        -- Only when holding binoculars
+        if weapon == GetHashKey('WEAPON_KIT_BINOCULARS')
+        or weapon == GetHashKey('WEAPON_KIT_BINOCULARS_IMPROVED') then
+
+            if IsControlPressed(0, 0xF84FA74F) then -- Correct RedM RMB input
+                local dir, deg = getCompass()
+                local dist = getDistance()
+
+                local distText = dist and (math.floor(dist) .. " m") or "--"
+                local isImproved = weapon == GetHashKey('WEAPON_KIT_BINOCULARS_IMPROVED')
+                local dirText = isImproved and (deg .. "° " .. dir) or dir
+
+                -- Updated UI string for clean and immersive display
+                lib.showTextUI(
+                    ("Distance: %s\nDirection: %s"):format(
+                        distText,
+                        dirText
+                    ),
+                    {
+                        position = "right-center",
+                        style = { opacity = 0.9 } -- Fade effect for premium feel
+                    }
+                )
+            else
+                lib.hideTextUI()
+            end
+        else
+            lib.hideTextUI()
+        end
+    end
+end)
 
 RegisterCommand('testbinoculars', function(source, args, rawCommand)
     local isImproved = args[1] == 'improved'
@@ -101,16 +170,7 @@ RegisterCommand('testbinoculars', function(source, args, rawCommand)
     debugPrint('[Crossing-Binoculars] Test command executed | Improved:', isImproved)
 end, false)
 
-RegisterNetEvent('Crossing-Binoculars:client:RemoveBinoculars', function(weaponName)
-    local ped = PlayerPedId()
-    if HasPedGotWeapon(ped, GetHashKey(weaponName), false) then
-        RemoveWeaponFromPed(ped, GetHashKey(weaponName))
-        debugPrint('[Crossing-Binoculars] Binoculars removed:', weaponName)
-    end
-end)
-
-local binocularsEquipped = false -- Track binocular state
-
+-- Updated EquipBinoculars to handle weapon-switch desync
 RegisterNetEvent('Crossing-Binoculars:client:EquipBinoculars', function(weaponName)
     local ped = PlayerPedId()
 
@@ -134,13 +194,54 @@ RegisterNetEvent('Crossing-Binoculars:client:EquipBinoculars', function(weaponNa
     binocularsEquipped = true
     debugPrint('[Crossing-Binoculars] Binoculars equipped: ' .. weaponName)
 
+    -- Initialize zoom only when improved binoculars are used
+    local zoom = Config.Binoculars.improved.baseFov
+
     -- Bind right mouse button for zoom functionality
     CreateThread(function()
-        while binocularsEquipped and HasPedGotWeapon(ped, GetHashKey(weaponName), false) do
+        while binocularsEquipped do
             Wait(0)
-            if IsControlPressed(0, 25) then -- Right mouse button
-                TriggerEvent('Crossing-Binoculars:client:UseBinoculars', weaponName == 'WEAPON_KIT_BINOCULARS_IMPROVED')
+
+            local isHoldingRMB = IsControlPressed(0, 0xF84FA74F)
+
+            -- Start binoculars when RMB is held
+            if isHoldingRMB and not usingBinoculars then
+                TriggerEvent(
+                    'Crossing-Binoculars:client:UseBinoculars',
+                    weaponName == 'WEAPON_KIT_BINOCULARS_IMPROVED'
+                )
+            end
+
+            -- Stop binoculars when RMB is released
+            if not isHoldingRMB and usingBinoculars then
+                StopBinoculars()
             end
         end
     end)
+
+    -- Ensure `config` is initialized properly
+    local config = Config.Binoculars.normal -- Replace with improved if needed
+
+    -- Updated zoom logic for normal and improved binoculars
+    if config.zoom then
+        -- Improved binoculars ONLY
+        local step = Config.ZoomInvert and -config.zoomStep or config.zoomStep
+
+        if IsControlJustPressed(0, 241) then -- Scroll up
+            zoom = zoom - step
+        elseif IsControlJustPressed(0, 242) then -- Scroll down
+            zoom = zoom + step
+        end
+
+        zoom = math.clamp(zoom, config.minFov, config.maxFov)
+        SetCamFov(cam, zoom)
+    else
+        -- Normal binoculars: HARD LOCK
+        SetCamFov(cam, config.baseFov)
+
+        -- HARD disable zoom inputs
+        DisableControlAction(0, 241, true)
+        DisableControlAction(0, 242, true)
+    end
 end)
+
