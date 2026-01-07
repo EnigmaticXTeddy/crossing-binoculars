@@ -1,35 +1,49 @@
-# Crossing-Binoculars
+# Crossing Binoculars
 
-**Crossing-Binoculars** is a lightweight and customizable binoculars script for **RedM** servers.  
-It allows players to use normal and improved binoculars with proper animations, zoom control, and weapon wheel integration.
+Crossing-Binoculars is a lightweight, client-authoritative binocular system for RedM servers.
 
-Designed to work seamlessly with **RSG** and **ox_lib**.
+It enhances the vanilla binocular experience by adding camera sway, distance measurement, and a directional compass, while fully preserving Red Dead Redemption 2’s built-in animal information.
 
----
+Designed for RSG Framework servers and written to be stable, performant, and non-vanilla without being intrusive.
 
-## ✨ Features
+## Features
+- **Normal Binoculars**: Fixed zoom, basic sway, and cardinal directions.
+- **Improved Binoculars**: Adjustable zoom, enhanced stability, precise distance, and directional accuracy.
 
-- Normal & Improved Binoculars (different zoom levels)
-- Scroll wheel zoom in / out
-- Smooth usage animations
-- Weapon wheel integration
-- Standalone & lightweight
-- Optional debug mode
+## Notes
+- Normal binoculars use RedM’s native zoom behavior.
+- Improved binoculars enhance stability, precision, and directional accuracy.
 
----
+## Configuration
+- Adjust sway and precision in `config.lua`.
+- Normal binoculars:
+  - Sway: 0.65
+  - Distance Precision: 5.0
+- Improved binoculars:
+  - Sway: 0.18
+  - Distance Precision: 1.0
 
-## 📦 Requirements
+## Controls
+- **Right Mouse Button**: Activate binoculars.
+- **Scroll Wheel**: Zoom (Improved Binoculars only).
 
-- RedM
-- ox_lib
-- RSG Framework (recommended)
+📦 Requirements
 
----
+RedM
 
-## 🔧 Installation
+RSG Framework
 
-1. Download or clone this repository
-2. Place `crossing-binoculars` into your `resources` folder
-3. Add to your `server.cfg`:
-   ```cfg
-   ensure crossing-binoculars
+ox_lib (optional, recommended)
+
+🔧 Installation
+
+Download or clone this repository
+
+Place the folder into your resources directory:
+
+resources/crossing-binoculars
+
+
+Add to your server.cfg:
+
+ensure crossing-binoculars
