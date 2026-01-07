@@ -18,7 +18,8 @@ shared_scripts {
 }
 
 dependencies {
-    'rsg-core'
+    'rsg-core',
+    'ox_lib'
 }
 
 lua54 'yes'
