@@ -13,6 +13,10 @@ server_scripts {
     'server/binoculars.lua'
 }
 
+shared_scripts {
+    '@ox_lib/init.lua'
+}
+
 dependencies {
     'rsg-core'
 }
